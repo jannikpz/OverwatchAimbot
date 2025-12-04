@@ -4,7 +4,6 @@
 # - Lädt eine FP16-Engine mit NMS (imgsz=256) direkt (ohne trtexec)
 # - DXCam Screen-Grab -> zentriertes 640x640 ROI -> Inferenz 256x256
 # - Zeichnet Boxen [x1,y1,x2,y2,conf,cls] zurück ins 640er ROI
-# - KEINE Maus-/Keyboard-Interaktionen (kein Cheat)
 # ---------------------------------------------------------
 
 import os
@@ -20,7 +19,7 @@ import pycuda.driver as cuda
 import pycuda.autoinit  # CUDA-Kontext für PyCUDA
 
 # ---------- Pfade & Parameter ----------
-ENGINE_PATH = r"/runs/detect/train13b/weights/best640.engine"  # <- anpassen
+ENGINE_PATH = r"urPath"  # <- anpassen
 IMGSZ       = 640      # muss zur Engine passen (imgsz=256 beim Export/Build)
 ROI_SIZE    = 640      # sichtbares ROI in der Bildschirmmitte
 CONF_THRES  = 0.1
