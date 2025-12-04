@@ -61,9 +61,8 @@ import numpy as np
 import keyboard  # globale Hotkeys
 
 from engine import TRTRunnerV10  # -> deine TRT-Klasse (mit RGB-Preprocess!)
-#r"C:/Users/gtvgp/Desktop/pkt2/OverwatchML/runs/detect/train13b/weights/best256.engine" (path nur engine verändern
 # ---------- Pfade & Parameter ----------
-ENGINE_PATH = r"C:/Users/gtvgp/Desktop/pkt2/OverwatchML/runs/detect/train13b/weights/best256.engine"
+ENGINE_PATH = r"urPath"
 IMGSZ       = 256      # zur Engine passend bauen!
 ROI_SIZE    = 256      # Anzeige-ROI (zentriert vom Bildschirm)
 CONF_THRES  = 0.6
