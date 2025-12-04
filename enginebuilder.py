@@ -1,4 +1,3 @@
-#python -c "from ultralytics import YOLO; YOLO(r'C:\Users\gtvgp\Desktop\pkt2\OverwatchML\runs\detect\train13b\weights\best.pt').export(format='onnx', imgsz=256, simplify=True, nms=True, dynamic=False)"
 #für onnx datei und dann enginebuilder für die engine ggf PATH anpassen
 #
 # enginebuilder.py  (TensorRT 10.x)
@@ -28,7 +27,7 @@ def build_engine():
             raise RuntimeError("ONNX parse failed")
 
     config = builder.create_builder_config()
-    # ~3 GB Workspace (anpassen, wenn nötig) == WIe viel platz TENSOR bei dem erstellen von der engine hat
+ 
     config.set_memory_pool_limit(trt.MemoryPoolType.WORKSPACE, 3 << 30)
 
     # FP16 falls verfügbar
