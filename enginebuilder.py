@@ -5,8 +5,8 @@ import os
 import tensorrt as trt
 
 # --- Pfade anpassen ---
-ONNX_PATH   = r"/runs/detect/train13b/weights/batch2.onnx"
-ENGINE_PATH = r"/runs/detect/train13b/weights/batch2.engine"
+ONNX_PATH   = r"urpath"
+ENGINE_PATH = r"urpath"
 INPUT_NAME  = "images"                # aus deiner ONNX geprüft
 INPUT_SHAPE = (2, 3, 256, 256)        # Batch=1, 256x256
 
