@@ -6,12 +6,6 @@
 # - Thread 1: Capture (dxcam)  -> in_q
 # - Thread 2: Inferenz (TRT)   -> out_q
 # - Main:     Anzeige + grüne Boxen + Pfeile (Crosshair→Center/Head) + HUD/FPS
-# - Trigger/Hotkeys:
-#     8  -> TriggerMode zyklisch: OFF -> HOLD -> TOGGLE -> ...
-#     0  -> CENTER (HOLD: solange gedrückt | TOGGLE: an/aus, XOR)
-#     9  -> HEAD   (HOLD: solange gedrückt | TOGGLE: an/aus, XOR)
-#     c  -> Auswahlstrategie: nearest <-> highest_conf
-# - Keine Maus-/Click-Aktionen (reine Visualisierung)
 # ---------------------------------------------------------
 
 import os
@@ -29,7 +23,7 @@ from humaninput import move_relative
 from engine import TRTRunnerV10  # deine TRT-Klasse (mit RGB-Preprocess!)
 from humaninput import mov
 # ---------- Pfade & Parameter ----------
-ENGINE_PATH = r"C:/Users/gtvgp/Desktop/pkt2/OverwatchML/runs/detect/train13b/weights/best256.engine"
+ENGINE_PATH = r"urPath"
 IMGSZ       = 256      # zur Engine passend builden
 ROI_SIZE    = 256      # sichtbares ROI (zentriert)
 CONF_THRES  = 0.6
