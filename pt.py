@@ -6,7 +6,7 @@ from ultralytics import YOLO
 import time
 
 # ================== Einstellungen ==================
-MODEL_PATH = r"C:\Users\gtvgp\Desktop\pkt2\OverwatchML\runs\detect\train13b\weights\best.pt"
+MODEL_PATH = r"urPath"
 ROI_SIZE   = 640              # 640x640 aus der Bildschirmmitte
 CONF_THRES = 0.25             # Konfidenz-Schwelle
 IOU_THRES  = 0.45             # NMS IOU (nur falls kein GPU-NMS in deinem .pt)
