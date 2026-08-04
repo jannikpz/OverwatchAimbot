@@ -8,6 +8,8 @@
 # - Main:     Anzeige + grüne Boxen + Pfeile (Crosshair→Center/Head) + HUD/FPS
 # ---------------------------------------------------------
 
+import ctypes
+from ctypes import wintypes
 import os
 import time
 import threading
@@ -18,10 +20,46 @@ import cv2
 import dxcam
 import numpy as np
 import keyboard  # globale Hotkeys
-from humaninput import move_relative
 
 from engine import TRTRunnerV10  # deine TRT-Klasse (mit RGB-Preprocess!)
-from humaninput import mov
+
+##### Windows API
+if hasattr(wintypes, "ULONG_PTR"):
+    ULONG_PTR = wintypes.ULONG_PTR
+else:
+    ULONG_PTR = ctypes.c_ulonglong if ctypes.sizeof(ctypes.c_void_p) == 8 else ctypes.c_ulong
+
+INPUT_MOUSE      = 0
+MOUSEEVENTF_MOVE = 0x0001
+
+class MOUSEINPUT(ctypes.Structure):
+    _fields_ = (
+        ("dx",          wintypes.LONG),
+        ("dy",          wintypes.LONG),
+        ("mouseData",   wintypes.DWORD),
+        ("dwFlags",     wintypes.DWORD),
+        ("time",        wintypes.DWORD),
+        ("dwExtraInfo", ULONG_PTR),
+    )
+
+class _INPUTunion(ctypes.Union):
+    _fields_ = (("mi", MOUSEINPUT),)
+
+class INPUT(ctypes.Structure):
+    _anonymous_ = ("u",)
+    _fields_ = (("type", wintypes.DWORD), ("u", _INPUTunion),)
+
+SendInput = ctypes.windll.user32.SendInput
+
+def move_relative(dx: int, dy: int):
+    inp = INPUT(type=INPUT_MOUSE)
+    inp.mi = MOUSEINPUT(dx=dx, dy=dy, mouseData=0,
+                        dwFlags=MOUSEEVENTF_MOVE,
+                        time=0, dwExtraInfo=ULONG_PTR(0))
+    sent = SendInput(1, ctypes.byref(inp), ctypes.sizeof(inp))
+    if sent != 1:
+        raise OSError("SendInput fehlgeschlagen")
+
 # ---------- Pfade & Parameter ----------
 ENGINE_PATH = r"urPath"
 IMGSZ       = 256      # zur Engine passend builden

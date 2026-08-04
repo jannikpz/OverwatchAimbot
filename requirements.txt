@@ -1,0 +1,7 @@
+opencv-python
+dxcam
+numpy
+keyboard
+tensorrt
+pycuda
+ultralytics
