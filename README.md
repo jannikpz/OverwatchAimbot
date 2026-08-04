@@ -1,42 +1,43 @@
 # OverwatchAimbot (YOLO + TensorRT)
 
-## Voraussetzungen
+## Requirements
 
-- **Python 3.11** (getestet mit 3.11.5)
-- NVIDIA-GPU + aktueller Treiber (TensorRT/PyCUDA laufen nicht auf AMD/Intel)
+- **Python 3.11** (tested with 3.11.5)
+- NVIDIA GPU + current driver (TensorRT/PyCUDA do not run on AMD/Intel)
+- NVIDIA CUDA Toolkit installed beforehand (needed to build `pycuda` during `pip install`)
 
-## Struktur
+## Structure
 
-- `model/best.pt` – trainiertes YOLO-Modell (nano).
-- `builder/enginebuilder.py` – baut aus `model/best.pt` automatisch (intern über ONNX) eine TensorRT-`.engine`-Datei (`model/best.engine`).
-- `runtime/engine.py` – `TRTRunnerV10`, lädt die `.engine` und macht die Inferenz.
-- `runtime/engineThreads2.py` – eigentlicher Einstiegspunkt: Capture + Inferenz + Aiming.
-- `requirements.txt` / `installdependencies.py` – Python-Abhängigkeiten.
+- `model/best.pt` – trained YOLO model (nano).
+- `builder/enginebuilder.py` – builds a TensorRT `.engine` file (`model/best.engine`) from `model/best.pt` (ONNX export happens internally).
+- `runtime/engine.py` – `TRTRunnerV10`, loads the `.engine` and runs inference.
+- `runtime/engineThreads2.py` – actual entry point: capture + inference + aiming.
+- `requirements.txt` / `installdependencies.py` – Python dependencies.
 
 ## Setup
 
-1. `tensorrt` und `pycuda` manuell installieren (brauchen ein passendes, vorher installiertes NVIDIA CUDA Toolkit zum Bauen/Verlinken):
+1. Install `tensorrt` and `pycuda` manually (need a matching NVIDIA CUDA Toolkit already installed to build/link against). This can take several minutes, since `pycuda` compiles locally instead of using a prebuilt wheel:
    ```bash
    pip install tensorrt pycuda
    ```
 
-2. Restliche Python-Abhängigkeiten installieren:
+2. Install the remaining Python dependencies:
    ```bash
    python installdependencies.py
    ```
 
-3. Engine bauen (liest automatisch `model/best.pt`, schreibt `model/best.engine`):
+3. Build the engine (automatically reads `model/best.pt`, writes `model/best.engine`). This step can also take a few minutes, TensorRT benchmarks multiple kernel implementations while building:
    ```bash
    python builder/enginebuilder.py
    ```
 
-4. Starten (`ENGINE_PATH` wird automatisch auf `model/best.engine` aufgelöst):
+4. Run (`ENGINE_PATH` is resolved automatically to `model/best.engine`):
    ```bash
    python runtime/engineThreads2.py
    ```
 
 ## Hotkeys (runtime/engineThreads2.py)
 
-- `8` – Trigger umschalten: OFF ↔ HOLD
-- `0` – halten für Aim (nur wirksam wenn Trigger = HOLD)
-- `9` – Beenden
+- `8` – toggle trigger: OFF ↔ HOLD
+- `0` – hold to aim (only active when trigger = HOLD)
+- `9` – quit
