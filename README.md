@@ -4,7 +4,8 @@
 
 - **Python 3.11** (tested with 3.11.5)
 - NVIDIA GPU + current driver (TensorRT/PyCUDA do not run on AMD/Intel)
-- NVIDIA CUDA Toolkit installed beforehand (needed to build `pycuda` during `pip install`)
+- `tensorrt` is a prebuilt wheel: needs the GPU driver and a matching CUDA major version (e.g. cu12), no full CUDA Toolkit required.
+- `pycuda` compiles locally at install time: needs the full NVIDIA CUDA Toolkit installed beforehand (`nvcc` + headers/libs).
 
 ## Structure
 
@@ -16,7 +17,7 @@
 
 ## Setup
 
-1. Install `tensorrt` manually (needs a matching NVIDIA CUDA Toolkit already installed to build/link against):
+1. Install `tensorrt` manually (prebuilt wheel; if plain `pip install tensorrt` fails for your setup, download the TensorRT SDK from NVIDIA's developer site instead and install the included `.whl` locally):
    ```bash
    pip install tensorrt
    ```
