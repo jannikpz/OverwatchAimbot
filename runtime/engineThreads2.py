@@ -61,7 +61,7 @@ def move_relative(dx: int, dy: int):
         raise OSError("SendInput fehlgeschlagen")
 
 # ---------- Pfade & Parameter ----------
-ENGINE_PATH = r"urPath"
+ENGINE_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "model", "best.engine")
 IMGSZ       = 256      # zur Engine passend builden
 ROI_SIZE    = 256      # sichtbares ROI (zentriert)
 CONF_THRES  = 0.6

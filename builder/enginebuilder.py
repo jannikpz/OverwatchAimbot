@@ -8,7 +8,7 @@ from ultralytics import YOLO
 # --- Pfade anpassen ---
 REPO_ROOT   = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PT_PATH     = os.path.join(REPO_ROOT, "model", "best.pt")   # trainiertes YOLO-Modell (.pt)
-ENGINE_PATH = r"urpath"        # Ausgabe-Pfad, pro Rechner anpassen
+ENGINE_PATH = os.path.join(REPO_ROOT, "model", "best.engine")   # pro Rechner/GPU neu gebaut, nicht portabel
 INPUT_NAME  = "images"                # aus deiner ONNX geprüft
 INPUT_SHAPE = (1, 3, 256, 256)        # Batch=1, 256x256
 IMGSZ       = INPUT_SHAPE[-1]
