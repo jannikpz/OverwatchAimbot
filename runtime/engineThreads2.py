@@ -1,11 +1,12 @@
 
 
-# engineThreads.py
+# engineThreads2.py
 # ---------------------------------------------------------
 # Multithread-Overlay (nur Visualisierung) für TensorRT 10.x
 # - Thread 1: Capture (dxcam)  -> in_q
 # - Thread 2: Inferenz (TRT)   -> out_q
-# - Main:     Anzeige + grüne Boxen + Pfeile (Crosshair→Center/Head) + HUD/FPS
+# - Main:     Anzeige + grüne Boxen + Pfeil (Crosshair→Center) + HUD/FPS
+# - Hotkeys: 8 = Trigger OFF/HOLD, 0 = halten für Aim, 9 = Beenden
 # ---------------------------------------------------------
 
 import ctypes
@@ -68,9 +69,6 @@ CONF_THRES  = 0.6
 TARGET_FPS  = 70
 SHOW_FPS    = True
 
-# Head-Offset (Anteil der Boxhöhe unter Top-Kante)
-HEAD_ALPHA = 0.31  # 31%
-
 cv2.setNumThreads(1)
 
 # ---------- Utils ----------
@@ -101,11 +99,9 @@ def draw_boxes(roi: np.ndarray, det: np.ndarray, scale_xy: float, conf_thres: fl
         thickness = 2 if i == highlight_idx else 1
         cv2.rectangle(roi, (x1, y1), (x2, y2), (0, 255, 0), thickness)
 
-def pick_det(det: np.ndarray, rcx: int, rcy: int, mode: str, conf_thres: float) -> Tuple[int, Optional[np.ndarray], int]:
+def pick_det(det: np.ndarray, rcx: int, rcy: int, conf_thres: float) -> Tuple[int, Optional[np.ndarray], int]:
     """
-    Wähle eine Detection:
-      - 'nearest': Box deren Mittelpunkt am nächsten am Crosshair liegt (Conf leicht gewichtet)
-      - 'highest_conf': höchste Confidence
+    Wähle die Box, deren Mittelpunkt am nächsten am Crosshair liegt (Conf leicht gewichtet).
     Rückgabe: (idx_in_filtered, row, idx_in_filtered) oder (-1, None, -1)
     idx_in_filtered bezieht sich auf m = det[conf>=thres] (für highlight).
     """
@@ -116,11 +112,7 @@ def pick_det(det: np.ndarray, rcx: int, rcy: int, mode: str, conf_thres: float) 
     if m.size == 0:
         return -1, None, -1
 
-    if mode == "highest_conf":
-        i_f = int(np.argmax(m[:, 4]))
-        return i_f, m[i_f], i_f
-
-    # nearest: rc auf IMGSZ-Skala umrechnen (det ist in IMGSZ)
+    # rc auf IMGSZ-Skala umrechnen (det ist in IMGSZ)
     scale_xy = IMGSZ / float(ROI_SIZE)
     rcx_s = rcx * scale_xy
     rcy_s = rcy * scale_xy
@@ -133,37 +125,21 @@ def pick_det(det: np.ndarray, rcx: int, rcy: int, mode: str, conf_thres: float) 
     i_f = int(np.argmin(score))
     return i_f, m[i_f], i_f
 
-def compute_offsets_for_modes(box, scale_xy: float, roi_size: int, head_alpha: float):
+def compute_center_offset(box, scale_xy: float, roi_size: int):
     """
-    Box [x1,y1,x2,y2,conf,cls] (IMGSZ-Skala) -> Punkte:
-      - Center = exakte Boxmitte
-      - Head   = Top-Center + head_alpha * Boxhöhe
-    gibt Offsets (sx,sy) zu ROI-Mitte + Pixel-Koords (im ROI) zurück.
+    Box [x1,y1,x2,y2,conf,cls] (IMGSZ-Skala) -> Boxmitte.
+    gibt Offset (sx,sy) zu ROI-Mitte + Pixel-Koords (im ROI) zurück.
     """
     x1, y1, x2, y2 = box[0], box[1], box[2], box[3]
     # zurück auf ROI-Skala
     x1 *= scale_xy; y1 *= scale_xy; x2 *= scale_xy; y2 *= scale_xy
 
-    h = max(1.0, (y2 - y1))
     rcx, rcy = roi_size * 0.5, roi_size * 0.5
 
-    # CENTER: geometrische Mitte
     cx = (x1 + x2) * 0.5
     cy = (y1 + y2) * 0.5
 
-    # HEAD: Anteil unter Top
-    hx = (x1 + x2) * 0.5
-    hy = y1 + head_alpha * h
-
-    sx_center = cx - rcx
-    sy_center = cy - rcy
-    sx_head   = hx - rcx
-    sy_head   = hy - rcy
-
-    return {
-        "center": (sx_center, sy_center, (int(cx), int(cy))),
-        "head":   (sx_head,   sy_head,   (int(hx), int(hy))),
-    }
+    return cx - rcx, cy - rcy, (int(cx), int(cy))
 
 def main_pipelined():
     in_q  = queue.Queue(maxsize=2)
@@ -171,52 +147,24 @@ def main_pipelined():
     stop  = threading.Event()
 
     # --- shared state / hotkeys ---
-    state_lock  = threading.Lock()
-    select_mode = "nearest"   # oder 'highest_conf'
+    state_lock = threading.Lock()
+    quit_event = threading.Event()
 
-    # Trigger-Mode via 8
-    TRIGGER_OFF, TRIGGER_HOLD, TRIGGER_TOGGLE = 0, 1, 2
+    # Trigger via 8: OFF <-> HOLD
+    TRIGGER_OFF, TRIGGER_HOLD = 0, 1
     trigger_mode = TRIGGER_OFF
 
-    # nur im TOGGLE-Modus genutzt:
-    center_on = False
-    head_on   = False
-
     # Hotkeys:
-    def hk_cycle_trigger():
-        nonlocal trigger_mode, center_on, head_on
-        trigger_mode = (trigger_mode + 1) % 3
-        if trigger_mode == TRIGGER_OFF:
-            center_on = False
-            head_on   = False
-        print(f"[TriggerMode] -> {['OFF','HOLD','TOGGLE'][trigger_mode]}")
+    def hk_toggle_trigger():
+        nonlocal trigger_mode
+        trigger_mode = TRIGGER_HOLD if trigger_mode == TRIGGER_OFF else TRIGGER_OFF
+        print(f"[TriggerMode] -> {['OFF','HOLD'][trigger_mode]}")
 
-    def hk_toggle_center():
-        nonlocal center_on, head_on
-        if trigger_mode == TRIGGER_TOGGLE:
-            center_on = not center_on
-            if center_on:
-                head_on = False  # XOR
-            print(f"[CENTER] {'ON' if center_on else 'OFF'} (TOGGLE)")
+    def hk_quit():
+        quit_event.set()
 
-    def hk_toggle_head():
-        nonlocal center_on, head_on
-        if trigger_mode == TRIGGER_TOGGLE:
-            head_on = not head_on
-            if head_on:
-                center_on = False  # XOR
-            print(f"[HEAD] {'ON' if head_on else 'OFF'} (TOGGLE)")
-
-    def hk_toggle_select():
-        nonlocal select_mode
-        with state_lock:
-            select_mode = "highest_conf" if select_mode == "nearest" else "nearest"
-        print(f"[SELECT] {select_mode}")
-
-    keyboard.add_hotkey("8", hk_cycle_trigger)
-    keyboard.add_hotkey("0", hk_toggle_center)   # nur TOGGLE wirksam
-    keyboard.add_hotkey("9", hk_toggle_head)     # nur TOGGLE wirksam
-    keyboard.add_hotkey("!", hk_toggle_select)  #bringt eig nichts vergessen
+    keyboard.add_hotkey("8", hk_toggle_trigger)
+    keyboard.add_hotkey("9", hk_quit)
 
     # --- Capture-Thread ---
     def t_capture():
@@ -280,67 +228,38 @@ def main_pipelined():
     t0 = time.time(); frames = 0; fps_est = 0.0
 
     try:
-        while True:
+        while not quit_event.is_set():
             try:
                 roi, det, scale_back = out_q.get(timeout=0.05)
             except queue.Empty:
-                if (cv2.waitKey(1) & 0xFF) == 27:
-                    break
+                cv2.waitKey(1)
                 continue
 
             rcx, rcy = ROI_SIZE // 2, ROI_SIZE // 2
 
             with state_lock:
-                _select_mode = select_mode
                 _trigger_mode = trigger_mode
-                _center_on = center_on
-                _head_on   = head_on
 
-            # Sub-Mode ermitteln aus TriggerMode + 0/9
-            if _trigger_mode == TRIGGER_OFF:
+            # Sub-Mode ermitteln aus TriggerMode + 0
+            if _trigger_mode == TRIGGER_HOLD and keyboard.is_pressed("0"):
+                mode = "center"
+            else:
                 mode = "off"
-            elif _trigger_mode == TRIGGER_HOLD:
-                # hier zählen gedrückte Tasten (XOR: 0 hat Vorrang)
-                if keyboard.is_pressed("0"):
-                    mode = "center"
-                elif keyboard.is_pressed("9"):
-                    mode = "head"
-                else:
-                    mode = "off"
-            else:  # TRIGGER_TOGGLE
-                if _center_on:
-                    mode = "center"
-                elif _head_on:
-                    mode = "head"
-                else:
-                    mode = "off"
 
             # Beste Detection für Visualisierung + Pfeile
-            idx_f, best, highlight_idx = pick_det(det, rcx, rcy, _select_mode, CONF_THRES)
+            idx_f, best, highlight_idx = pick_det(det, rcx, rcy, CONF_THRES)
 
             # Immer: grüne Boxen (Highlight für gewählte Box)
             draw_boxes(roi, det, scale_back, CONF_THRES, highlight_idx=highlight_idx)
 
-            # Pfeile/Marker nur, wenn aktiv & Box vorhanden
-            if idx_f >= 0 and best is not None and _trigger_mode != TRIGGER_OFF:
-                offsets = compute_offsets_for_modes(best, scale_back, ROI_SIZE, HEAD_ALPHA)
-                (sx_c, sy_c, (cx, cy)) = offsets["center"]
-                (sx_h, sy_h, (hx, hy)) = offsets["head"]
+            # Pfeil/Marker nur, wenn aktiv & Box vorhanden
+            if idx_f >= 0 and best is not None and mode == "center":
+                sx_c, sy_c, (cx, cy) = compute_center_offset(best, scale_back, ROI_SIZE)
 
-                if mode == "center":
-                    move_relative(int(sx_c),int(sy_c))
-                if mode == "head":
-                    move_relative(int(sx_h),int(sy_h))
+                move_relative(int(sx_c), int(sy_c))
 
-
-                if mode == "center":
-                    cv2.arrowedLine(roi, (rcx, rcy), (int(cx), int(cy)), (0, 255, 255), 1, tipLength=0.25)  # gelb
-                elif mode == "head":
-                    cv2.arrowedLine(roi, (rcx, rcy), (int(hx), int(hy)), (255, 0, 255), 1, tipLength=0.25)  # magenta
-
-                # kleine Marker
+                cv2.arrowedLine(roi, (rcx, rcy), (int(cx), int(cy)), (0, 255, 255), 1, tipLength=0.25)  # gelb
                 cv2.circle(roi, (int(cx), int(cy)), 2, (0, 255, 255), -1)
-                cv2.circle(roi, (int(hx), int(hy)), 2, (255, 0, 255), -1)
 
             # FPS + HUD
             frames += 1
@@ -350,7 +269,7 @@ def main_pipelined():
                 frames = 0
                 t0 = now
             if SHOW_FPS:
-                trig_name = ['OFF','HOLD','TOGGLE'][_trigger_mode]
+                trig_name = ['OFF','HOLD'][_trigger_mode]
                 line1 = f"FPS~{fps_est:4.1f}  imgsz={IMGSZ}"
                 line2 = f"Trig:{trig_name}  Mode:{mode.upper()}"
 
@@ -365,9 +284,7 @@ def main_pipelined():
             cv2.line(roi, (rcx, rcy - 6), (rcx, rcy + 6), (255, 255, 255), 1)
 
             cv2.imshow("ROI (Analyse)", roi)
-
-            if (cv2.waitKey(1) & 0xFF) == 27:
-                break
+            cv2.waitKey(1)
 
     finally:
         stop.set()

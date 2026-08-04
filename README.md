@@ -1,9 +1,14 @@
 # OverwatchAimbot (YOLO + TensorRT)
 
+## Voraussetzungen
+
+- **Python 3.11** (getestet mit 3.11.5)
+- NVIDIA-GPU + aktueller Treiber (TensorRT/PyCUDA laufen nicht auf AMD/Intel)
+
 ## Struktur
 
 - `model/best.pt` – trainiertes YOLO-Modell (nano).
-- `builder/enginebuilder.py` – baut aus `model/best.pt` automatisch (intern über ONNX) eine TensorRT-`.engine`-Datei.
+- `builder/enginebuilder.py` – baut aus `model/best.pt` automatisch (intern über ONNX) eine TensorRT-`.engine`-Datei (`model/best.engine`).
 - `runtime/engine.py` – `TRTRunnerV10`, lädt die `.engine` und macht die Inferenz.
 - `runtime/engineThreads2.py` – eigentlicher Einstiegspunkt: Capture + Inferenz + Aiming.
 - `requirements.txt` / `installdependencies.py` – Python-Abhängigkeiten.
@@ -16,20 +21,18 @@
    ```
    `tensorrt` und `pycuda` brauchen zusätzlich eine passende NVIDIA-CUDA-Installation (nur auf NVIDIA-GPUs lauffähig).
 
-2. Engine bauen (liest automatisch `model/best.pt`, `ENGINE_PATH` in [builder/enginebuilder.py](builder/enginebuilder.py) anpassen):
+2. Engine bauen (liest automatisch `model/best.pt`, schreibt `model/best.engine`):
    ```bash
    python builder/enginebuilder.py
    ```
 
-3. `ENGINE_PATH` in [runtime/engineThreads2.py](runtime/engineThreads2.py) auf denselben Pfad wie oben setzen, dann starten:
+3. Starten (`ENGINE_PATH` wird automatisch auf `model/best.engine` aufgelöst):
    ```bash
    python runtime/engineThreads2.py
    ```
 
 ## Hotkeys (runtime/engineThreads2.py)
 
-- `8` – Trigger-Mode durchschalten: OFF → HOLD → TOGGLE
-- `9` – HOLD: Head-Ziel solange gehalten | TOGGLE: Head-Ziel an/aus
-- `0` – HOLD: Center-Ziel solange gehalten | TOGGLE: Center-Ziel an/aus
-- `!` – Auswahlmodus wechseln (nearest / highest_conf)
-- `ESC` – Beenden
+- `8` – Trigger umschalten: OFF ↔ HOLD
+- `0` – halten für Aim (nur wirksam wenn Trigger = HOLD)
+- `9` – Beenden
