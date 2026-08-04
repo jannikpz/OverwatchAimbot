@@ -17,8 +17,9 @@ import tensorrt as trt
 from ultralytics import YOLO
 
 # --- Pfade anpassen ---
-PT_PATH     = r"urpath"        # trainiertes YOLO-Modell (.pt)
-ENGINE_PATH = r"urpath"
+REPO_ROOT   = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+PT_PATH     = os.path.join(REPO_ROOT, "model", "best.pt")   # trainiertes YOLO-Modell (.pt)
+ENGINE_PATH = r"urpath"        # Ausgabe-Pfad, pro Rechner anpassen
 INPUT_NAME  = "images"                # aus deiner ONNX geprüft
 INPUT_SHAPE = (1, 3, 256, 256)        # Batch=1, 256x256
 IMGSZ       = INPUT_SHAPE[-1]
