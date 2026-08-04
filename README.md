@@ -16,12 +16,12 @@
 
 ## Setup
 
-1. Install `tensorrt` and `pycuda` manually (need a matching NVIDIA CUDA Toolkit already installed to build/link against). This can take several minutes, since `pycuda` compiles locally instead of using a prebuilt wheel:
+1. Install `tensorrt` manually (needs a matching NVIDIA CUDA Toolkit already installed to build/link against):
    ```bash
-   pip install tensorrt pycuda
+   pip install tensorrt
    ```
 
-2. Install the remaining Python dependencies:
+2. Install the remaining Python dependencies (includes `pycuda`, which compiles locally against your CUDA Toolkit and can take several minutes):
    ```bash
    python installdependencies.py
    ```
