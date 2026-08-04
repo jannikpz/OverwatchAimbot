@@ -15,18 +15,22 @@
 
 ## Setup
 
-1. Python-Abhängigkeiten installieren:
+1. `tensorrt` und `pycuda` manuell installieren (brauchen ein passendes, vorher installiertes NVIDIA CUDA Toolkit zum Bauen/Verlinken):
+   ```bash
+   pip install tensorrt pycuda
+   ```
+
+2. Restliche Python-Abhängigkeiten installieren:
    ```bash
    python installdependencies.py
    ```
-   `tensorrt` und `pycuda` brauchen zusätzlich eine passende NVIDIA-CUDA-Installation (nur auf NVIDIA-GPUs lauffähig).
 
-2. Engine bauen (liest automatisch `model/best.pt`, schreibt `model/best.engine`):
+3. Engine bauen (liest automatisch `model/best.pt`, schreibt `model/best.engine`):
    ```bash
    python builder/enginebuilder.py
    ```
 
-3. Starten (`ENGINE_PATH` wird automatisch auf `model/best.engine` aufgelöst):
+4. Starten (`ENGINE_PATH` wird automatisch auf `model/best.engine` aufgelöst):
    ```bash
    python runtime/engineThreads2.py
    ```
