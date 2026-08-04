@@ -2,17 +2,6 @@
 #
 # enginebuilder.py  (TensorRT 10.x)
 import os
-import subprocess
-import sys
-
-def _ensure_requirements():
-    req_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "requirements.txt")
-    if os.path.isfile(req_path):
-        print(f"[INFO] Installiere Requirements aus {req_path} …")
-        subprocess.check_call([sys.executable, "-m", "pip", "install", "-r", req_path])
-
-_ensure_requirements()
-
 import tensorrt as trt
 from ultralytics import YOLO
 
