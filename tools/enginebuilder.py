@@ -1,24 +1,19 @@
-# takes a .pt file -> builds an engine (ONNX export happens internally), adjust paths if needed
-#
-# enginebuilder.py  (TensorRT 10.x)
 import os
 import tensorrt as trt
 from ultralytics import YOLO
 
-# --- adjust paths ---
 REPO_ROOT   = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-PT_PATH     = os.path.join(REPO_ROOT, "model", "best.pt")   # trained YOLO model (.pt)
-ENGINE_PATH = os.path.join(REPO_ROOT, "model", "best.engine")   # rebuilt per machine/GPU, not portable
-INPUT_NAME  = "images"                # verified from your ONNX
-INPUT_SHAPE = (1, 3, 256, 256)        # batch=1, 256x256
+PT_PATH     = os.path.join(REPO_ROOT, "model", "best.pt")
+ENGINE_PATH = os.path.join(REPO_ROOT, "model", "best.engine")
+INPUT_SHAPE = (1, 3, 256, 256)  #format (batch,rgb,256x256 pixels)
 IMGSZ       = INPUT_SHAPE[-1]
 
-def export_onnx(pt_path: str, imgsz: int) -> str:
+def export_onnx(pt_path: str, imgsz: int) -> str: #path to best.pt & picture size
     print(f"[INFO] Exporting {pt_path} -> ONNX (imgsz={imgsz})")
     model = YOLO(pt_path)
-    onnx_path = model.export(format="onnx", imgsz=imgsz, dynamic=False)
+    onnx_path = model.export(format="onnx", imgsz=imgsz, dynamic=False) #onnx
     print(f"[OK] ONNX exported (temporary): {onnx_path}")
-    return str(onnx_path)
+    return str(onnx_path)  # return path to onnx
 
 def build_engine(onnx_path: str):
     logger  = trt.Logger(trt.Logger.INFO)
@@ -38,18 +33,18 @@ def build_engine(onnx_path: str):
 
     config = builder.create_builder_config()
 
-    config.set_memory_pool_limit(trt.MemoryPoolType.WORKSPACE, 3 << 30)
+    config.set_memory_pool_limit(trt.MemoryPoolType.WORKSPACE, 3 << 30) # memory for workspace 3 * 2^30 Byte = 3GiB
 
-    # enable FP16 if available
+    # switch to floatingpoint 16  (from 32) if available
     if builder.platform_has_fast_fp16:
         config.set_flag(trt.BuilderFlag.FP16)
 
-    # fixed profile (min=opt=max) for 1x3x256x256
+    # fixed profile for 1x3x256x256
     profile = builder.create_optimization_profile()
     profile.set_shape(INPUT_NAME, INPUT_SHAPE, INPUT_SHAPE, INPUT_SHAPE)
     config.add_optimization_profile(profile)
 
-    # build serialized plan (bytes in HostMemory) -- this step can take a while (several minutes)
+
     print("[INFO] Building serialized network (FP16={}, shape={}) -- this can take a few minutes..."
           .format(config.get_flag(trt.BuilderFlag.FP16), INPUT_SHAPE))
     plan = builder.build_serialized_network(network, config)
@@ -72,8 +67,11 @@ if __name__ == "__main__":
     if not os.path.isfile(PT_PATH):
         raise FileNotFoundError(f"PT_PATH not found: {PT_PATH}")
     onnx_path = export_onnx(PT_PATH, IMGSZ)
+    #build engine
     try:
         build_engine(onnx_path)
+    # if it fails remove onnx
+
     finally:
         os.remove(onnx_path)
         print(f"[INFO] Removed temporary ONNX file: {onnx_path}")

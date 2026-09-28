@@ -1,0 +1,5 @@
+ultralytics==8.4.164
+tensorrt-cu12==10.16.1.11
+onnx==1.23.0
+onnxruntime==1.30.0
+onnxslim==0.1.96

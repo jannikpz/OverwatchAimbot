@@ -1,3 +1,5 @@
-model/*.engine
+.idea/
+.venv/
 __pycache__/
-*.pyc
+*.engine
+*.onnx
