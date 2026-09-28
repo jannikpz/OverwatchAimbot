@@ -2,5 +2,4 @@ opencv-python
 dxcam
 numpy
 keyboard
-pycuda
 ultralytics
