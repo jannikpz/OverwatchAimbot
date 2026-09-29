@@ -3,3 +3,4 @@
 -venv
 #### python tools/enginebuilder.py
 
+#### VRAM in enginebuildy.py
