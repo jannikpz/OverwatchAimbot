@@ -3,4 +3,4 @@
 -venv
 #### python tools/enginebuilder.py
 
-#### VRAM in enginebuildy.py
+#### VRAM in enginebuildy.py (set to 3GiB)
