@@ -225,7 +225,7 @@ ENGINE_PATH = os.path.join(REPO_ROOT, "model", "best.engine")
 IMGSZ       = 256      # zur Engine passend
 ROI_SIZE    = 256      # sichtbares ROI (zentriert)
 CONF_THRES  = 0.6
-TARGET_FPS  = 100
+TARGET_FPS  = 70
 SHOW_FPS    = True
 
 # Head-Offset (Anteil der Boxhöhe unter Top-Kante)
@@ -246,10 +246,7 @@ def center_crop(frame_bgr: np.ndarray, size: int) -> np.ndarray:
     return roi
 
 def draw_boxes(roi: np.ndarray, det: np.ndarray, scale_xy: float, conf_thres: float, highlight_idx: int = -1):
-    """
-    Zeichnet grüne Boxen für alle Detections (CONF >= conf_thres).
-    highlight_idx referenziert die gefilterte Liste m (nicht det) und wird dicker gezeichnet.
-    """
+
     if det is None or det.size == 0:
         return
     m = det[det[:, 4] >= conf_thres]
@@ -262,13 +259,7 @@ def draw_boxes(roi: np.ndarray, det: np.ndarray, scale_xy: float, conf_thres: fl
         cv2.rectangle(roi, (x1, y1), (x2, y2), (0, 255, 0), thickness)
 
 def pick_det(det: np.ndarray, rcx: int, rcy: int, mode: str, conf_thres: float) -> Tuple[int, Optional[np.ndarray], int]:
-    """
-    Wähle eine Detection:
-      - 'nearest': Box deren Mittelpunkt am nächsten am Crosshair liegt (Conf leicht gewichtet)
-      - 'highest_conf': höchste Confidence
-    Rückgabe: (idx_in_filtered, row, idx_in_filtered) oder (-1, None, -1)
-    idx_in_filtered bezieht sich auf m = det[conf>=thres] (für highlight).
-    """
+
     if det is None or det.size == 0:
         return -1, None, -1
 
@@ -294,12 +285,8 @@ def pick_det(det: np.ndarray, rcx: int, rcy: int, mode: str, conf_thres: float) 
     return i_f, m[i_f], i_f
 
 def compute_offsets_for_modes(box, scale_xy: float, roi_size: int, head_alpha: float):
-    """
-    Box [x1,y1,x2,y2,conf,cls] (IMGSZ-Skala) -> Punkte:
-      - Center = exakte Boxmitte
-      - Head   = Top-Center + head_alpha * Boxhöhe
-    gibt Offsets (sx,sy) zu ROI-Mitte + Pixel-Koords (im ROI) zurück.
-    """
+    #offset berechnung
+
     x1, y1, x2, y2 = box[0], box[1], box[2], box[3]
     # zurück auf ROI-Skala
     x1 *= scale_xy; y1 *= scale_xy; x2 *= scale_xy; y2 *= scale_xy
