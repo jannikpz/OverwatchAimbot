@@ -1,4 +1,8 @@
-Realtime inference with a YOLO model, accelerated by a TensorRT engine.
+# Hero Shooter Object Detection
+
+Realtime object detection for hero shooter games, using a YOLO model accelerated by a TensorRT engine.
+
+The model detects characters on the game screen.
 
 ## Setup
 
