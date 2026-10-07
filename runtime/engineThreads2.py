@@ -207,7 +207,7 @@ class TRTRunnerV10:
 # ---------- Pfade & Parameter ----------
 SCRIPT_DIR  = os.path.dirname(os.path.abspath(__file__))  # Ordner des Skripts (tools/)
 PARENT_DIR  = os.path.dirname(SCRIPT_DIR)                  # ein Ordner höher
-ENGINE_PATH = r"C:\Users\gtvgp\overwatchcheat\OverwatchAimbot\model\best.engine"
+ENGINE_PATH = r"C:\Users\gtvgp\overwatchcheat\OverwatchAimbot\model\best256.engine"
 IMGSZ       = 256      # zur Engine passend
 ROI_SIZE    = 256      # sichtbares ROI (zentriert)
 CONF_THRES  = 0.6
