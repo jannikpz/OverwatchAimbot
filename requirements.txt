@@ -6,5 +6,7 @@ ultralytics==8.3.184
 numpy==2.2.6
 opencv-python==4.10.0.84
 onnx==1.17.0
+onnxslim==0.1.96
+onnxruntime-gpu==1.22.0
 tensorrt==10.13.2.6
 pycuda==2026.1

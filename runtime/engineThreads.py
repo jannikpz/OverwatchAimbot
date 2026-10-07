@@ -200,14 +200,28 @@ class TRTRunnerV10:
         self.stream.synchronize()
 
         # --- Postprocess ---
-        out = np.array(self.h_out, dtype=np.float32).reshape(self.out_shape)  # (1, M, 6)
-        det = out[0]
-        det = det[det[:, 4] > 0.0]
-        return det
+        # --- Postprocess (NMS im Runner) ---
+        out = np.array(self.h_out, dtype=np.float32).reshape(self.out_shape)  # (1, 6, 1344)
+        pred = out[0].T                       # (1344, 6): cx, cy, w, h, score0, score1
+        scores = pred[:, 4:]
+        cls = scores.argmax(axis=1)
+        conf = scores.max(axis=1)
+        keep = conf > 0.25                    # ggf. dein CONF_THRES
+        pred, cls, conf = pred[keep], cls[keep], conf[keep]
+        if len(pred) == 0:
+            return np.zeros((0, 6), dtype=np.float32)
+
+        xywh = np.stack([pred[:, 0] - pred[:, 2] / 2,
+                         pred[:, 1] - pred[:, 3] / 2,
+                         pred[:, 2], pred[:, 3]], axis=1)
+        idx = np.array(cv2.dnn.NMSBoxes(xywh.tolist(), conf.tolist(), 0.25, 0.45)).reshape(-1)
+
+        x1y1 = xywh[idx, :2]
+        x2y2 = x1y1 + xywh[idx, 2:]
+        return np.concatenate([x1y1, x2y2, conf[idx, None], cls[idx, None]], axis=1).astype(np.float32)
 # ---------- Pfade & Parameter ----------
-SCRIPT_DIR  = os.path.dirname(os.path.abspath(__file__))  # Ordner des Skripts (tools/)
-PARENT_DIR  = os.path.dirname(SCRIPT_DIR)                  # ein Ordner höher
-ENGINE_PATH = r"C:\Users\gtvgp\overwatchcheat\OverwatchAimbot\model\best256.engine"
+REPO_ROOT   = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # Ordner des Skripts (tools/)                # ein Ordner höher
+ENGINE_PATH = os.path.join(REPO_ROOT, "model", "best.engine")
 IMGSZ       = 256      # zur Engine passend
 ROI_SIZE    = 256      # sichtbares ROI (zentriert)
 CONF_THRES  = 0.6
