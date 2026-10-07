@@ -3,4 +3,7 @@
 -venv
 #### python tools/enginebuilder.py
 
+
+### nvida gpu with cuda 12.X
+
 #### VRAM in enginebuildy.py (set to 3GiB)
