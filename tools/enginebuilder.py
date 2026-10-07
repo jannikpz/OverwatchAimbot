@@ -6,6 +6,7 @@ REPO_ROOT   = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PT_PATH     = os.path.join(REPO_ROOT, "model", "best.pt")
 ENGINE_PATH = os.path.join(REPO_ROOT, "model", "best.engine")
 INPUT_SHAPE = (1, 3, 256, 256)  #format (batch,rgb,256x256 pixels)
+INPUT_NAME = "images"
 IMGSZ       = INPUT_SHAPE[-1]
 
 def export_onnx(pt_path: str, imgsz: int) -> str: #path to best.pt & picture size
