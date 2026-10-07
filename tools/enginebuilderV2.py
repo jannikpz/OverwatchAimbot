@@ -40,7 +40,7 @@ def build_engine(onnx_path: str, engine_path: str):
     print("[OK] ONNX geparst", flush=True)
 
     config = builder.create_builder_config()
-    config.set_memory_pool_limit(trt.MemoryPoolType.WORKSPACE, 1 << 30)
+    config.set_memory_pool_limit(trt.MemoryPoolType.WORKSPACE, 3 << 30) #3 * 2^30 = 3 GiB
     if builder.platform_has_fast_fp16:
         config.set_flag(trt.BuilderFlag.FP16)
 

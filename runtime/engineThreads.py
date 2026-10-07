@@ -225,7 +225,7 @@ ENGINE_PATH = os.path.join(REPO_ROOT, "model", "best.engine")
 IMGSZ       = 256      # zur Engine passend
 ROI_SIZE    = 256      # sichtbares ROI (zentriert)
 CONF_THRES  = 0.6
-TARGET_FPS  = 70
+TARGET_FPS  = 100
 SHOW_FPS    = True
 
 # Head-Offset (Anteil der Boxhöhe unter Top-Kante)
