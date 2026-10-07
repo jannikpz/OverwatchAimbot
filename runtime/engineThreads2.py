@@ -1,3 +1,7 @@
+
+
+import ctypes
+from ctypes import wintypes
 import os
 import time
 import threading
@@ -13,6 +17,9 @@ from ctypes import wintypes
 import tensorrt as trt
 import pycuda.driver as cuda
 
+from engine import TRTRunnerV10 
+
+##### Windows API
 if hasattr(wintypes, "ULONG_PTR"):
     ULONG_PTR = wintypes.ULONG_PTR
 else:
@@ -219,7 +226,7 @@ HEAD_ALPHA = 0.31  # 31%
 
 cv2.setNumThreads(1)
 
-# ---------- Utils ----------
+
 def center_crop(frame_bgr: np.ndarray, size: int) -> np.ndarray:
     h, w = frame_bgr.shape[:2]
     cx, cy = w // 2, h // 2
@@ -262,11 +269,7 @@ def pick_det(det: np.ndarray, rcx: int, rcy: int, mode: str, conf_thres: float) 
     if m.size == 0:
         return -1, None, -1
 
-    if mode == "highest_conf":
-        i_f = int(np.argmax(m[:, 4]))
-        return i_f, m[i_f], i_f
 
-    # nearest: rc auf IMGSZ-Skala umrechnen (det ist in IMGSZ)
     scale_xy = IMGSZ / float(ROI_SIZE)
     rcx_s = rcx * scale_xy
     rcy_s = rcy * scale_xy
@@ -275,7 +278,7 @@ def pick_det(det: np.ndarray, rcx: int, rcy: int, mode: str, conf_thres: float) 
     dx = centers_x - rcx_s
     dy = centers_y - rcy_s
     dist2 = dx * dx + dy * dy
-    score = dist2 * (1.0 - 0.05 * m[:, 4])  # Conf bevorzugt, aber Distanz dominiert
+    score = dist2 * (1.0 - 0.05 * m[:, 4])  
     i_f = int(np.argmin(score))
     return i_f, m[i_f], i_f
 
@@ -287,7 +290,7 @@ def compute_offsets_for_modes(box, scale_xy: float, roi_size: int, head_alpha: f
     gibt Offsets (sx,sy) zu ROI-Mitte + Pixel-Koords (im ROI) zurück.
     """
     x1, y1, x2, y2 = box[0], box[1], box[2], box[3]
-    # zurück auf ROI-Skala
+
     x1 *= scale_xy; y1 *= scale_xy; x2 *= scale_xy; y2 *= scale_xy
 
     h = max(1.0, (y2 - y1))
@@ -316,17 +319,21 @@ def main_pipelined():
     out_q = queue.Queue(maxsize=2)
     stop  = threading.Event()
 
-    # --- shared state / hotkeys ---
-    state_lock  = threading.Lock()
-    select_mode = "nearest"   # oder 'highest_conf'
+    state_lock = threading.Lock()
+    quit_event = threading.Event()
 
-    # Trigger-Mode via 8
-    TRIGGER_OFF, TRIGGER_HOLD, TRIGGER_TOGGLE = 0, 1, 2
+  
+    TRIGGER_OFF, TRIGGER_HOLD = 0, 1
     trigger_mode = TRIGGER_OFF
 
-    # nur im TOGGLE-Modus genutzt:
-    center_on = False
-    head_on   = False
+    
+    def hk_toggle_trigger():
+        nonlocal trigger_mode
+        trigger_mode = TRIGGER_HOLD if trigger_mode == TRIGGER_OFF else TRIGGER_OFF
+        print(f"[TriggerMode] -> {['OFF','HOLD'][trigger_mode]}")
+
+    def hk_quit():
+        quit_event.set()
 
     # Hotkeys:
     def hk_cycle_trigger():
@@ -364,7 +371,7 @@ def main_pipelined():
     keyboard.add_hotkey("9", hk_toggle_head)     # nur TOGGLE wirksam
     keyboard.add_hotkey("!", hk_toggle_select)  #bringt eig nichts vergessen
 
-    # --- Capture-Thread ---
+
     def t_capture():
         cam = dxcam.create(output_idx=0)
         cam.start(target_fps=TARGET_FPS)
@@ -389,7 +396,6 @@ def main_pipelined():
         finally:
             cam.stop()
 
-    # --- Inferenz-Thread ---
     def t_infer():
 
         cuda.init()
@@ -404,7 +410,7 @@ def main_pipelined():
                     roi = in_q.get(timeout=0.02)
                 except queue.Empty:
                     continue
-                det = runner.infer(roi)  # (M,6) in IMGSZ-Skala
+                det = runner.infer(roi)  
                 try:
                     if out_q.full():
                         _ = out_q.get_nowait()
@@ -419,7 +425,7 @@ def main_pipelined():
     th_inf = threading.Thread(target=t_infer,   name="Infer",   daemon=True)
     th_cap.start(); th_inf.start()
 
-    # --- Anzeige / Render ---
+
     cv2.namedWindow("ROI (Analyse)", cv2.WINDOW_NORMAL)
     cv2.resizeWindow("ROI (Analyse)", ROI_SIZE, ROI_SIZE)
 
@@ -442,8 +448,10 @@ def main_pipelined():
                 _center_on = center_on
                 _head_on   = head_on
 
-            # Sub-Mode ermitteln aus TriggerMode + 0/9
-            if _trigger_mode == TRIGGER_OFF:
+
+            if _trigger_mode == TRIGGER_HOLD and keyboard.is_pressed("0"):
+                mode = "center"
+            else:
                 mode = "off"
             elif _trigger_mode == TRIGGER_HOLD:
                 # hier zählen gedrückte Tasten (XOR: 0 hat Vorrang)
@@ -461,22 +469,12 @@ def main_pipelined():
                 else:
                     mode = "off"
 
-            # Beste Detection für Visualisierung + Pfeile
-            idx_f, best, highlight_idx = pick_det(det, rcx, rcy, _select_mode, CONF_THRES)
+            idx_f, best, highlight_idx = pick_det(det, rcx, rcy, CONF_THRES)
 
-            # Immer: grüne Boxen (Highlight für gewählte Box)
             draw_boxes(roi, det, scale_back, CONF_THRES, highlight_idx=highlight_idx)
 
-            # Pfeile/Marker nur, wenn aktiv & Box vorhanden
-            if idx_f >= 0 and best is not None and _trigger_mode != TRIGGER_OFF:
-                offsets = compute_offsets_for_modes(best, scale_back, ROI_SIZE, HEAD_ALPHA)
-                (sx_c, sy_c, (cx, cy)) = offsets["center"]
-                (sx_h, sy_h, (hx, hy)) = offsets["head"]
-
-                if mode == "center":
-                    move_relative(int(sx_c),int(sy_c))
-                if mode == "head":
-                    move_relative(int(sx_h),int(sy_h))
+            if idx_f >= 0 and best is not None and mode == "center":
+                sx_c, sy_c, (cx, cy) = compute_center_offset(best, scale_back, ROI_SIZE)
 
 
                 if mode == "center":
@@ -488,7 +486,7 @@ def main_pipelined():
                 cv2.circle(roi, (int(cx), int(cy)), 2, (0, 255, 255), -1)
                 cv2.circle(roi, (int(hx), int(hy)), 2, (255, 0, 255), -1)
 
-            # FPS + HUD
+
             frames += 1
             now = time.time()
             if SHOW_FPS and (now - t0) >= 0.5:
@@ -506,7 +504,7 @@ def main_pipelined():
                             (200,200,255), 1, cv2.LINE_AA)
 
 
-            # Fadenkreuz
+
             cv2.line(roi, (rcx - 6, rcy), (rcx + 6, rcy), (255, 255, 255), 1)
             cv2.line(roi, (rcx, rcy - 6), (rcx, rcy + 6), (255, 255, 255), 1)
 
