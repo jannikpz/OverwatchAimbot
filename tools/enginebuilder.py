@@ -34,7 +34,7 @@ def build_engine(onnx_path: str):
 
     config = builder.create_builder_config()
 
-    config.set_memory_pool_limit(trt.MemoryPoolType.WORKSPACE, 3 << 30) # memory for workspace 3 * 2^30 Byte = 3GiB
+    config.set_memory_pool_limit(trt.MemoryPoolType.WORKSPACE, 3 << 30) # memory for workspace (adjust to available VRAM)3 * 2^30 Byte = 3GiB
 
     # switch to floatingpoint 16  (from 32) if available
     if builder.platform_has_fast_fp16:

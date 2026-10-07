@@ -1,3 +1,7 @@
+
+
+import ctypes
+from ctypes import wintypes
 import os
 import time
 import threading
@@ -13,6 +17,9 @@ from ctypes import wintypes
 import tensorrt as trt
 import pycuda.driver as cuda
 
+from engine import TRTRunnerV10 
+
+##### Windows API
 if hasattr(wintypes, "ULONG_PTR"):
     ULONG_PTR = wintypes.ULONG_PTR
 else:
@@ -50,165 +57,8 @@ def move_relative(dx: int, dy: int):
         raise OSError("SendInput fehlgeschlagen")
 
 
-
-def _np_dtype(dt: trt.DataType):
-    return {
-        trt.DataType.FLOAT:  np.float32,
-        trt.DataType.HALF:   np.float16,
-        trt.DataType.INT32:  np.int32,
-        trt.DataType.INT8:   np.int8,
-        trt.DataType.BOOL:   np.bool_,
-    }.get(dt, np.float32)
-
-class TRTRunnerV10:
-    """
-
-    """
-    def __init__(self, engine_path: str, imgsz: int = 256):
-        self.imgsz = imgsz
-
-        logger = trt.Logger(trt.Logger.WARNING)
-        if not os.path.isfile(engine_path):
-            raise FileNotFoundError(f"Engine nicht gefunden: {engine_path}")
-        with open(engine_path, "rb") as f, trt.Runtime(logger) as rt:
-            self.engine = rt.deserialize_cuda_engine(f.read())
-        if self.engine is None:
-            raise RuntimeError("Konnte Engine nicht deserialisieren (Version/Datei prüfen).")
-
-        self.context = self.engine.create_execution_context()
-        self.stream  = cuda.Stream()
-
-        # IO-Tensoren über neue API einsammeln
-        self.inputs, self.outputs = [], []
-        for i in range(self.engine.num_io_tensors):
-            name = self.engine.get_tensor_name(i)
-            mode = self.engine.get_tensor_mode(name)
-            (self.inputs if mode == trt.TensorIOMode.INPUT else self.outputs).append(name)
-        if not self.inputs or not self.outputs:
-            raise RuntimeError("Keine IO-Tensoren gefunden.")
-
-        # Wähle Input/Output
-        self.in_name = self.inputs[0]
-        self.out_name = None
-        for name in self.outputs:
-            shp = self.engine.get_tensor_shape(name)
-            # YOLO-Ausgang hat meist letzte Dim 6 (x1,y1,x2,y2,conf,cls)
-            if len(shp) >= 2 and (shp[-1] == 6 or shp[-1] == -1):
-                self.out_name = name
-                break
-        if self.out_name is None:
-            self.out_name = self.outputs[0]
-
-        # Dtypes
-        self.in_dtype  = _np_dtype(self.engine.get_tensor_dtype(self.in_name))
-        self.out_dtype = _np_dtype(self.engine.get_tensor_dtype(self.out_name))
-
-        # Feste Eingabeform (Batch=1)
-        self.context.set_input_shape(self.in_name, (1, 3, self.imgsz, self.imgsz))
-
-        # Output-Shape abfragen (kann dynamisch sein)
-        out_shape = tuple(self.context.get_tensor_shape(self.out_name))
-        if any(d < 0 for d in out_shape):
-            # Fallback, wenn max_det dynamisch ist
-            out_shape = (1, 300, 6)
-        self.out_shape = out_shape
-
-        # Host/GPU-Puffer (pagelocked Host für schnelle Transfers)
-        self.h_in  = cuda.pagelocked_empty(1 * 3 * self.imgsz * self.imgsz, dtype=self.in_dtype)
-        self.h_out = cuda.pagelocked_empty(int(np.prod(self.out_shape)),   dtype=self.out_dtype)
-        self.d_in  = cuda.mem_alloc(self.h_in.nbytes)
-        self.d_out = cuda.mem_alloc(self.h_out.nbytes)
-
-        # Tensoradressen einmalig binden
-        self.context.set_tensor_address(self.in_name,  int(self.d_in))
-        self.context.set_tensor_address(self.out_name, int(self.d_out))
-
-    def _preprocess(self, bgr: np.ndarray) -> np.ndarray:
-        """Resize -> NCHW -> [0..1] -> dtype (FP16/FP32), Batch=1 flach."""
-        if bgr.shape[:2] != (self.imgsz, self.imgsz):
-            bgr = cv2.resize(bgr, (self.imgsz, self.imgsz), interpolation=cv2.INTER_LINEAR)
-        rgb= cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
-        x = np.transpose(rgb, (2, 0, 1)).astype(np.float32) / 255.0
-        if self.in_dtype == np.float16:
-            x = x.astype(np.float16, copy=False)
-        return x.reshape(-1)
-
-    def infer(self, bgr: np.ndarray) -> np.ndarray:
-
-        self.h_in[:] = self._preprocess(bgr)
-
-
-        cuda.memcpy_htod_async(self.d_in, self.h_in, self.stream)
-
-
-        called = False
-        if hasattr(self.context, "enqueue_v3"):
-            self.context.enqueue_v3(self.stream.handle)
-            called = True
-        elif hasattr(self.context, "enqueueV3"):
-            self.context.enqueueV3(self.stream.handle)
-            called = True
-        elif hasattr(self.context, "execute_async_v3"):
-
-            self.context.execute_async_v3(self.stream.handle)
-            called = True
-        else:
-
-
-            if hasattr(self.engine, "get_binding_index") and hasattr(self.context, "execute_async_v2"):
-                try:
-                    # Bindings-Liste in Index-Reihenfolge bauen
-                    num_bindings = getattr(self.engine, "num_bindings", None)
-                    if num_bindings is None:
-
-                        bindings = [None] * 2
-                    else:
-                        bindings = [None] * num_bindings
-
-                    # Eingabe und Ausgabe per Binding-Name/-Index zuweisen
-                    in_idx  = self.engine.get_binding_index(self.in_name)
-                    out_idx = self.engine.get_binding_index(self.out_name)
-
-                    if in_idx is not None:
-                        # ggf. Liste groß genug machen
-                        if in_idx >= len(bindings):
-                            bindings.extend([None] * (in_idx - len(bindings) + 1))
-                        bindings[in_idx] = int(self.d_in)
-                    if out_idx is not None:
-                        if out_idx >= len(bindings):
-                            bindings.extend([None] * (out_idx - len(bindings) + 1))
-                        bindings[out_idx] = int(self.d_out)
-
-                    # Für dynamische Shapes sicherstellen:
-                    if hasattr(self.context, "set_binding_shape"):
-                        self.context.set_binding_shape(in_idx, (1, 3, self.imgsz, self.imgsz))
-
-                    # ausführen
-                    self.context.execute_async_v2(bindings=bindings, stream_handle=self.stream.handle)
-                    called = True
-                except Exception as e:
-                    # Debug-Hilfe: zeig verfügbare Methoden an
-                    avail = [m for m in dir(self.context) if ("enqueue" in m or "execute" in m)]
-                    raise RuntimeError(f"Kein passender Inferenz-Call gefunden. context-methods={avail}\nGrund: {e}")
-            else:
-                avail = [m for m in dir(self.context) if ("enqueue" in m or "execute" in m)]
-                raise RuntimeError(f"TensorRT ExecutionContext hat keinen enqueue_v3/enqueueV3/execute_async_v3 "
-                                   f"und V2-Fallback ist nicht möglich. Verfügbar: {avail}")
-
-        # --- D2H ---
-        cuda.memcpy_dtoh_async(self.h_out, self.d_out, self.stream)
-        self.stream.synchronize()
-
-        # --- Postprocess ---
-        out = np.array(self.h_out, dtype=np.float32).reshape(self.out_shape)  # (1, M, 6)
-        det = out[0]
-        det = det[det[:, 4] > 0.0]
-        return det
-# ---------- Pfade & Parameter ----------
-SCRIPT_DIR  = os.path.dirname(os.path.abspath(__file__))  # Ordner des Skripts (tools/)
-PARENT_DIR  = os.path.dirname(SCRIPT_DIR)                  # ein Ordner höher
-ENGINE_PATH = r"C:\Users\gtvgp\overwatchcheat\OverwatchAimbot\model\best.engine"
-IMGSZ       = 256      # zur Engine passend
+ENGINE_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "model", "best.engine")
+IMGSZ       = 256      # zur Engine passend builden
 ROI_SIZE    = 256      # sichtbares ROI (zentriert)
 CONF_THRES  = 0.6
 TARGET_FPS  = 70
@@ -219,7 +69,7 @@ HEAD_ALPHA = 0.31  # 31%
 
 cv2.setNumThreads(1)
 
-# ---------- Utils ----------
+
 def center_crop(frame_bgr: np.ndarray, size: int) -> np.ndarray:
     h, w = frame_bgr.shape[:2]
     cx, cy = w // 2, h // 2
@@ -262,11 +112,7 @@ def pick_det(det: np.ndarray, rcx: int, rcy: int, mode: str, conf_thres: float) 
     if m.size == 0:
         return -1, None, -1
 
-    if mode == "highest_conf":
-        i_f = int(np.argmax(m[:, 4]))
-        return i_f, m[i_f], i_f
 
-    # nearest: rc auf IMGSZ-Skala umrechnen (det ist in IMGSZ)
     scale_xy = IMGSZ / float(ROI_SIZE)
     rcx_s = rcx * scale_xy
     rcy_s = rcy * scale_xy
@@ -275,7 +121,7 @@ def pick_det(det: np.ndarray, rcx: int, rcy: int, mode: str, conf_thres: float) 
     dx = centers_x - rcx_s
     dy = centers_y - rcy_s
     dist2 = dx * dx + dy * dy
-    score = dist2 * (1.0 - 0.05 * m[:, 4])  # Conf bevorzugt, aber Distanz dominiert
+    score = dist2 * (1.0 - 0.05 * m[:, 4])  
     i_f = int(np.argmin(score))
     return i_f, m[i_f], i_f
 
@@ -287,7 +133,7 @@ def compute_offsets_for_modes(box, scale_xy: float, roi_size: int, head_alpha: f
     gibt Offsets (sx,sy) zu ROI-Mitte + Pixel-Koords (im ROI) zurück.
     """
     x1, y1, x2, y2 = box[0], box[1], box[2], box[3]
-    # zurück auf ROI-Skala
+
     x1 *= scale_xy; y1 *= scale_xy; x2 *= scale_xy; y2 *= scale_xy
 
     h = max(1.0, (y2 - y1))
@@ -316,17 +162,21 @@ def main_pipelined():
     out_q = queue.Queue(maxsize=2)
     stop  = threading.Event()
 
-    # --- shared state / hotkeys ---
-    state_lock  = threading.Lock()
-    select_mode = "nearest"   # oder 'highest_conf'
+    state_lock = threading.Lock()
+    quit_event = threading.Event()
 
-    # Trigger-Mode via 8
-    TRIGGER_OFF, TRIGGER_HOLD, TRIGGER_TOGGLE = 0, 1, 2
+  
+    TRIGGER_OFF, TRIGGER_HOLD = 0, 1
     trigger_mode = TRIGGER_OFF
 
-    # nur im TOGGLE-Modus genutzt:
-    center_on = False
-    head_on   = False
+    
+    def hk_toggle_trigger():
+        nonlocal trigger_mode
+        trigger_mode = TRIGGER_HOLD if trigger_mode == TRIGGER_OFF else TRIGGER_OFF
+        print(f"[TriggerMode] -> {['OFF','HOLD'][trigger_mode]}")
+
+    def hk_quit():
+        quit_event.set()
 
     # Hotkeys:
     def hk_cycle_trigger():
@@ -364,7 +214,7 @@ def main_pipelined():
     keyboard.add_hotkey("9", hk_toggle_head)     # nur TOGGLE wirksam
     keyboard.add_hotkey("!", hk_toggle_select)  #bringt eig nichts vergessen
 
-    # --- Capture-Thread ---
+
     def t_capture():
         cam = dxcam.create(output_idx=0)
         cam.start(target_fps=TARGET_FPS)
@@ -389,7 +239,6 @@ def main_pipelined():
         finally:
             cam.stop()
 
-    # --- Inferenz-Thread ---
     def t_infer():
 
         cuda.init()
@@ -404,7 +253,7 @@ def main_pipelined():
                     roi = in_q.get(timeout=0.02)
                 except queue.Empty:
                     continue
-                det = runner.infer(roi)  # (M,6) in IMGSZ-Skala
+                det = runner.infer(roi)  
                 try:
                     if out_q.full():
                         _ = out_q.get_nowait()
@@ -419,7 +268,7 @@ def main_pipelined():
     th_inf = threading.Thread(target=t_infer,   name="Infer",   daemon=True)
     th_cap.start(); th_inf.start()
 
-    # --- Anzeige / Render ---
+
     cv2.namedWindow("ROI (Analyse)", cv2.WINDOW_NORMAL)
     cv2.resizeWindow("ROI (Analyse)", ROI_SIZE, ROI_SIZE)
 
@@ -442,8 +291,10 @@ def main_pipelined():
                 _center_on = center_on
                 _head_on   = head_on
 
-            # Sub-Mode ermitteln aus TriggerMode + 0/9
-            if _trigger_mode == TRIGGER_OFF:
+
+            if _trigger_mode == TRIGGER_HOLD and keyboard.is_pressed("0"):
+                mode = "center"
+            else:
                 mode = "off"
             elif _trigger_mode == TRIGGER_HOLD:
                 # hier zählen gedrückte Tasten (XOR: 0 hat Vorrang)
@@ -461,22 +312,12 @@ def main_pipelined():
                 else:
                     mode = "off"
 
-            # Beste Detection für Visualisierung + Pfeile
-            idx_f, best, highlight_idx = pick_det(det, rcx, rcy, _select_mode, CONF_THRES)
+            idx_f, best, highlight_idx = pick_det(det, rcx, rcy, CONF_THRES)
 
-            # Immer: grüne Boxen (Highlight für gewählte Box)
             draw_boxes(roi, det, scale_back, CONF_THRES, highlight_idx=highlight_idx)
 
-            # Pfeile/Marker nur, wenn aktiv & Box vorhanden
-            if idx_f >= 0 and best is not None and _trigger_mode != TRIGGER_OFF:
-                offsets = compute_offsets_for_modes(best, scale_back, ROI_SIZE, HEAD_ALPHA)
-                (sx_c, sy_c, (cx, cy)) = offsets["center"]
-                (sx_h, sy_h, (hx, hy)) = offsets["head"]
-
-                if mode == "center":
-                    move_relative(int(sx_c),int(sy_c))
-                if mode == "head":
-                    move_relative(int(sx_h),int(sy_h))
+            if idx_f >= 0 and best is not None and mode == "center":
+                sx_c, sy_c, (cx, cy) = compute_center_offset(best, scale_back, ROI_SIZE)
 
 
                 if mode == "center":
@@ -488,7 +329,7 @@ def main_pipelined():
                 cv2.circle(roi, (int(cx), int(cy)), 2, (0, 255, 255), -1)
                 cv2.circle(roi, (int(hx), int(hy)), 2, (255, 0, 255), -1)
 
-            # FPS + HUD
+
             frames += 1
             now = time.time()
             if SHOW_FPS and (now - t0) >= 0.5:
@@ -506,7 +347,7 @@ def main_pipelined():
                             (200,200,255), 1, cv2.LINE_AA)
 
 
-            # Fadenkreuz
+
             cv2.line(roi, (rcx - 6, rcy), (rcx + 6, rcy), (255, 255, 255), 1)
             cv2.line(roi, (rcx, rcy - 6), (rcx, rcy + 6), (255, 255, 255), 1)
 
