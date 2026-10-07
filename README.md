@@ -4,6 +4,10 @@ Realtime object detection for hero shooter games, using a YOLO model accelerated
 
 The model detects characters on the game screen.
 
+## Model
+
+`best.pt` contains YOLO11n weights that I trained on my own dataset.
+
 ## Setup
 
 1. **Create a virtual environment** with Python 3.11:
