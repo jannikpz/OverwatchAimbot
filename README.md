@@ -1,4 +1,4 @@
-Realtime inference with a YOLO model, accelerated by a TensorRT engine that is built for your GPU.
+Realtime inference with a YOLO model, accelerated by a TensorRT engine.
 
 ## Setup
 
